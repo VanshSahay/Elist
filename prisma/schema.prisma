@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Waitlist {
+  id        Int       @id @default(autoincrement())
+  name      String
+  chatId    BigInt    // the Telegram group chat ID where this waitlist is active
+  createdAt DateTime  @default(now())
+  ownerUsername String
+  subscribers Subscriber[]
+}
+
+model Subscriber {
+  id          Int      @id @default(autoincrement())
+  waitlist    Waitlist @relation(fields: [waitlistId], references: [id])
+  waitlistId  Int
+  userId      BigInt   // Telegram user ID of the subscriber
+  username    String   // (optional) Telegram username
+  subscribedAt DateTime @default(now())
+}
