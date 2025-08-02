@@ -53,7 +53,7 @@ bot.command('help', (ctx) => {
 • \`/list <product>\` - Show all subscribers of a specific waitlist
 
 👥 **User Commands:**
-• \`/subscribe <product>\` - Join a waitlist (reacts with ✅ for success, ➖ if already subscribed)
+• \`/subscribe <product>\` - Join a waitlist (reacts with 👍)
 • \`/unsubscribe <product>\` - Leave a waitlist (reacts with ✅ for success)
 • \`/mywaitlists\` - List your subscribed waitlists (shows current chat only in groups, shows all chats when DMing bot)
 
@@ -106,7 +106,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
       }
     });
   
-    await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.`);
+    await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.\n\nUsers can subscribe with: /subscribe_${productName}`);
   });
 
 // /closewaitlist command to close a waitlist (owner or admin)
@@ -188,7 +188,64 @@ bot.command('subscribe', async (ctx) => {
             reaction: [{ type: 'emoji', emoji: '👍' }],
         });
     } catch (e) {
+        // Fallback to text message if reaction fails
         await ctx.reply(`You have been subscribed to "${productName}"!`);
+    }
+});
+
+// Handle dynamic subscribe commands like /subscribe_productname
+bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
+    const match = ctx.message.text.match(/^\/subscribe_(.+)/);
+    if (!match) return;
+    
+    const commandName = match[1];
+    const chatId = BigInt(ctx.chat!.id);
+    const userId = BigInt(ctx.from!.id);
+    const username = ctx.from!.username || '';
+    
+    // Convert command name back to product name (replace underscores with spaces)
+    const productName = commandName.replace(/_/g, ' ');
+    
+    // Find the waitlist in this chat by trying both the original name and command format
+    let waitlist = await prisma.waitlist.findFirst({ 
+        where: { name: productName, chatId } 
+    });
+    
+    // If not found, try looking for waitlists that would generate this command name
+    if (!waitlist) {
+        const allWaitlists = await prisma.waitlist.findMany({ where: { chatId } });
+        waitlist = allWaitlists.find(w => 
+            w.name.replace(/\s+/g, '_').toLowerCase() === commandName
+        ) || null;
+    }
+    
+    if (!waitlist) {
+        return ctx.reply(`❗️ No waitlist found for command "/subscribe_${commandName}".`);
+    }
+    
+    // Check if already subscribed
+    const existing = await prisma.subscriber.findFirst({
+        where: { waitlistId: waitlist.id, userId }
+    });
+    
+    if (existing) {
+        return ctx.reply(`You are already on the "${waitlist.name}" waitlist.`);
+    }
+    
+    // Add subscriber
+    await prisma.subscriber.create({
+        data: { waitlistId: waitlist.id, userId, username }
+    });
+    
+    try {
+        await ctx.telegram.callApi('setMessageReaction', {
+            chat_id: ctx.chat.id,
+            message_id: ctx.message.message_id,
+            reaction: [{ type: 'emoji', emoji: '👍' }],
+        });
+    } catch (e) {
+        // Fallback to text message if reaction fails
+        await ctx.reply(`You have been subscribed to "${waitlist.name}"!`);
     }
 });
 
