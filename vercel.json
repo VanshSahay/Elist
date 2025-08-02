@@ -1,20 +1,9 @@
 {
   "version": 2,
   "buildCommand": "prisma generate",
-  "builds": [
-    {
-      "src": "api/webhook.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "api/webhook.ts"
-    }
-  ],
   "functions": {
     "api/webhook.ts": {
+      "runtime": "@vercel/node@3.0.7",
       "includeFiles": "prisma/**"
     }
   }
