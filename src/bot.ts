@@ -174,13 +174,22 @@ bot.command('subscribe', async (ctx) => {
         where: { waitlistId: waitlist.id, userId }
     });
     if (existing) {
-        return ctx.react('➖' as any); // React with minus to indicate already subscribed
+        return ctx.reply(`You are already on the "${productName}" waitlist.`);
     }
     // Add subscriber
     await prisma.subscriber.create({
         data: { waitlistId: waitlist.id, userId, username }
     });
-    await ctx.react('✅' as any); // React with checkmark for successful subscription
+    
+    try {
+        await ctx.telegram.callApi('setMessageReaction', {
+            chat_id: ctx.chat.id,
+            message_id: ctx.message.message_id,
+            reaction: [{ type: 'emoji', emoji: '👍' }],
+        });
+    } catch (e) {
+        await ctx.reply(`You have been subscribed to "${productName}"!`);
+    }
 });
 
 bot.command('unsubscribe', async (ctx) => {
@@ -199,7 +208,16 @@ bot.command('unsubscribe', async (ctx) => {
     await prisma.subscriber.deleteMany({
         where: { waitlistId: waitlist.id, userId }
     });
-    await ctx.react('✅' as any); // React with checkmark for successful unsubscription
+    
+    try {
+        await ctx.telegram.callApi('setMessageReaction', {
+            chat_id: ctx.chat.id,
+            message_id: ctx.message.message_id,
+            reaction: [{ type: 'emoji', emoji: '👍' }],
+        });
+    } catch (e) {
+        await ctx.reply(`You have been removed from the "${productName}" waitlist.`);
+    }
 });
 
 bot.command('broadcast', async (ctx) => {
