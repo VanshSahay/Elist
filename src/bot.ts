@@ -14,7 +14,7 @@ bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
 
 // /start command (optional welcome message)
 bot.start((ctx) => {
-  ctx.reply('👋 Hey! Use /subscribe <product> to join a waitlist.');
+  ctx.reply('👋 Hey! Add me to your group and use /openwaitlist <product> @username to open a waitlist.');
 });
 
 async function isUserAdmin(ctx: any): Promise<boolean> {
