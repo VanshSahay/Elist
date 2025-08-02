@@ -49,7 +49,7 @@ bot.command('help', (ctx) => {
 👥 **User Commands:**
 • \`/subscribe <product>\` - Join a waitlist for a product
 • \`/unsubscribe <product>\` - Leave a waitlist
-• \`/mywaitlists\` - List of waitlists you have subscribed to
+• \`/mywaitlists\` - List your subscribed waitlists (shows current chat only in groups, shows all chats when DMing bot)
 
 📢 **Broadcasting:**
 • \`/broadcast <product> <message>\` - (Waitlist owner only) Send a message to everyone subscribed (Use this by directly DMing the bot)
@@ -58,7 +58,8 @@ bot.command('help', (ctx) => {
 - Add me to your group to manage waitlists
 - Only group admins can create waitlists
 - Only waitlist owners can broadcast messages
-- You can DM me directly for private commands`;
+- You can DM me directly for private commands
+- Use \`/mywaitlists\` in DM to see all your subscriptions across all chats`;
 
   ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
@@ -194,6 +195,7 @@ bot.command('unsubscribe', async (ctx) => {
 });
 
 bot.command('broadcast', async (ctx) => {
+    const chatId = BigInt(ctx.chat!.id);
     const fromUsername = ctx.from!.username;
     const args = ctx.message.text.split(' ').slice(1);
   
@@ -205,7 +207,7 @@ bot.command('broadcast', async (ctx) => {
     const broadcastText = args.slice(1).join(' ');
   
     const waitlist = await prisma.waitlist.findFirst({
-      where: { name: productName }
+      where: { name: productName, chatId }
     });
   
     if (!waitlist) {
@@ -266,25 +268,58 @@ bot.command('list', async (ctx) => {
 // /mywaitlists command to view user's joined waitlists
 bot.command('mywaitlists', async (ctx) => {
   const userId = BigInt(ctx.from!.id);
+  const isPrivateChat = ctx.chat!.type === 'private';
   
-  const subscriptions = await prisma.subscriber.findMany({
-    where: { userId },
-    include: {
-      waitlist: true
+  if (isPrivateChat) {
+    // Option 2: Global view with chat information (when DMing the bot)
+    const subscriptions = await prisma.subscriber.findMany({
+      where: { userId },
+      include: {
+        waitlist: true
+      }
+    });
+
+    if (subscriptions.length === 0) {
+      return ctx.reply('📝 You are not subscribed to any waitlists.');
     }
-  });
 
-  if (subscriptions.length === 0) {
-    return ctx.reply('📝 You are not subscribed to any waitlists.');
+    let message = '📝 **All Your Waitlists:**\n\n';
+    for (const sub of subscriptions) {
+      message += `• **${sub.waitlist.name}**\n`;
+      message += `  Owner: @${sub.waitlist.ownerUsername}\n`;
+      message += `  Chat ID: \`${sub.waitlist.chatId}\`\n\n`;
+    }
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
+    
+  } else {
+    // Option 1: Chat-specific (when used in a group)
+    const chatId = BigInt(ctx.chat!.id);
+    
+    const subscriptions = await prisma.subscriber.findMany({
+      where: { 
+        userId,
+        waitlist: {
+          chatId
+        }
+      },
+      include: {
+        waitlist: true
+      }
+    });
+
+    if (subscriptions.length === 0) {
+      return ctx.reply('📝 You are not subscribed to any waitlists in this chat.');
+    }
+
+    let message = '📝 **Your Waitlists in This Chat:**\n\n';
+    for (const sub of subscriptions) {
+      message += `• **${sub.waitlist.name}**\n`;
+      message += `  Owner: @${sub.waitlist.ownerUsername}\n\n`;
+    }
+
+    await ctx.reply(message, { parse_mode: 'Markdown' });
   }
-
-  let message = '📝 **Your Waitlists:**\n\n';
-  for (const sub of subscriptions) {
-    message += `• **${sub.waitlist.name}**\n`;
-    message += `  Owner: @${sub.waitlist.ownerUsername}\n\n`;
-  }
-
-  await ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
 export { bot };
