@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/webhook.ts": {
-      "runtime": "@vercel/node@3.0.7",
+      "runtime": "@vercel/node@3.2.25",
       "includeFiles": "prisma/**"
     }
   }
