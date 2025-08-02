@@ -9,6 +9,11 @@ if (!botToken) {
 
 const bot: Telegraf = new Telegraf(botToken);
 
+// Helper function to escape markdown characters in text
+function escapeMarkdown(text: string): string {
+  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+}
+
 // Ping test
 bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
 
@@ -269,8 +274,8 @@ bot.command('listwaitlists', async (ctx) => {
 
   let message = '📋 **Available Waitlists:**\n\n';
   for (const waitlist of waitlists) {
-    message += `• **${waitlist.name}**\n`;
-    message += `  Owner: @${waitlist.ownerUsername}\n`;
+    message += `• **${escapeMarkdown(waitlist.name)}**\n`;
+    message += `  Owner: @${escapeMarkdown(waitlist.ownerUsername)}\n`;
     message += `  Subscribers: ${waitlist._count.subscribers}\n\n`;
   }
 
@@ -301,16 +306,16 @@ bot.command('list', async (ctx) => {
   }
 
   if (waitlist.subscribers.length === 0) {
-    return ctx.reply(`📋 **${productName}** waitlist\n\nOwner: @${waitlist.ownerUsername}\nSubscribers: None yet`);
+    return ctx.reply(`📋 **${escapeMarkdown(productName)}** waitlist\n\nOwner: @${escapeMarkdown(waitlist.ownerUsername)}\nSubscribers: None yet`, { parse_mode: 'Markdown' });
   }
 
-  let message = `📋 **${productName}** waitlist\n\n`;
-  message += `Owner: @${waitlist.ownerUsername}\n`;
+  let message = `📋 **${escapeMarkdown(productName)}** waitlist\n\n`;
+  message += `Owner: @${escapeMarkdown(waitlist.ownerUsername)}\n`;
   message += `Subscribers (${waitlist.subscribers.length}):\n\n`;
   
   for (const subscriber of waitlist.subscribers) {
     if (subscriber.username) {
-      message += `• @${subscriber.username}\n`;
+      message += `• @${escapeMarkdown(subscriber.username)}\n`;
     } else {
       message += `• User ${subscriber.userId}\n`;
     }
@@ -354,8 +359,8 @@ bot.command('mywaitlists', async (ctx) => {
         chatName = `Chat ${sub.waitlist.chatId}`;
       }
 
-      message += `• **${sub.waitlist.name}**\n`;
-      message += `  Owner: @${sub.waitlist.ownerUsername}\n`;
+      message += `• **${escapeMarkdown(sub.waitlist.name)}**\n`;
+      message += `  Owner: @${escapeMarkdown(sub.waitlist.ownerUsername)}\n`;
       message += `  Group: ${chatName}\n\n`;
     }
 
@@ -383,8 +388,8 @@ bot.command('mywaitlists', async (ctx) => {
 
     let message = '📝 **Your Waitlists in This Chat:**\n\n';
     for (const sub of subscriptions) {
-      message += `• **${sub.waitlist.name}**\n`;
-      message += `  Owner: @${sub.waitlist.ownerUsername}\n\n`;
+      message += `• **${escapeMarkdown(sub.waitlist.name)}**\n`;
+      message += `  Owner: @${escapeMarkdown(sub.waitlist.ownerUsername)}\n\n`;
     }
 
     await ctx.reply(message, { parse_mode: 'Markdown' });
