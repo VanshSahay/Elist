@@ -205,7 +205,7 @@ bot.command('help', (ctx) => {
 
 👥 **User Commands:**
 • \`/subscribe <product>\` - Join a waitlist (reacts with 👍)
-• \`/unsubscribe <product>\` - Leave a waitlist (reacts with ✅ for success)
+• \`/unsubscribe <product>\` - Leave a waitlist (works in groups and DMs)
 • \`/mywaitlists\` - List your subscribed waitlists (shows current chat only in groups, shows all chats when DMing bot)
 
 📢 **Broadcasting:**
@@ -437,15 +437,37 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
 bot.command('unsubscribe', async (ctx) => {
     const chatId = BigInt(ctx.chat!.id);
     const userId = BigInt(ctx.from!.id);
+    const isPrivateChat = ctx.chat!.type === 'private';
     const args = ctx.message.text.split(' ').slice(1);
     if (args.length === 0) {
         return ctx.reply('Usage: /unsubscribe <productName>');
     }
     const productName = args.join(' ');
-    const waitlist = await prisma.waitlist.findFirst({ where: { name: productName, chatId } });
-    if (!waitlist) {
-        return ctx.reply(`❗️ No waitlist named "${productName}" found.`);
+    
+    let waitlist;
+    if (isPrivateChat) {
+        // In private chat, search across all chats for waitlists where user is subscribed
+        const subscription = await prisma.subscriber.findFirst({
+            where: { 
+                userId,
+                waitlist: { name: productName }
+            },
+            include: { waitlist: true }
+        });
+        
+        if (!subscription) {
+            return ctx.reply(`❗️ You are not subscribed to any waitlist named "${productName}".`);
+        }
+        
+        waitlist = subscription.waitlist;
+    } else {
+        // In group chat, search only in current chat
+        waitlist = await prisma.waitlist.findFirst({ where: { name: productName, chatId } });
+        if (!waitlist) {
+            return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+        }
     }
+    
     // Remove subscriber if exists
     await prisma.subscriber.deleteMany({
         where: { waitlistId: waitlist.id, userId }
@@ -458,7 +480,7 @@ bot.command('unsubscribe', async (ctx) => {
             reaction: [{ type: 'emoji', emoji: '👍' }],
         });
     } catch (e) {
-        await ctx.reply(`You have been removed from the "${productName}" waitlist.`);
+        await ctx.reply(`You have been removed from the "${escapeMarkdown(productName)}" waitlist.`, { parse_mode: 'Markdown' });
     }
 });
 
