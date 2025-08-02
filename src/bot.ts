@@ -31,7 +31,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
       return ctx.reply('❌ Only admins can open waitlists.');
     }
   
-    const atIndex = args.findIndex((arg) => arg.startsWith('@'));
+    const atIndex = args.findIndex((arg: string) => arg.startsWith('@'));
     if (args.length < 2 || atIndex === -1) {
       return ctx.reply('Usage: /openwaitlist <product name> @username');
     }
