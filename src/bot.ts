@@ -44,7 +44,8 @@ bot.command('help', (ctx) => {
 📋 **Waitlist Management:**
 • \`/openwaitlist <product> @username\` - (Admins only) Open a waitlist for a product on behalf of a user
 • \`/closewaitlist <product>\` - (Owner or Admin) Close and delete a waitlist
-• \`/list\` - List all waitlists in the channel
+• \`/listwaitlists\` - List all waitlists in the channel
+• \`/list <product>\` - Show all subscribers of a specific waitlist
 
 👥 **User Commands:**
 • \`/subscribe <product>\` - Join a waitlist for a product
@@ -249,8 +250,8 @@ bot.command('broadcast', async (ctx) => {
   
 
 
-// /list command to view all available waitlists in the current chat
-bot.command('list', async (ctx) => {
+// /listwaitlists command to view all available waitlists in the current chat
+bot.command('listwaitlists', async (ctx) => {
   const chatId = BigInt(ctx.chat!.id);
   
   const waitlists = await prisma.waitlist.findMany({
@@ -271,6 +272,48 @@ bot.command('list', async (ctx) => {
     message += `• **${waitlist.name}**\n`;
     message += `  Owner: @${waitlist.ownerUsername}\n`;
     message += `  Subscribers: ${waitlist._count.subscribers}\n\n`;
+  }
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+// /list command to view subscribers of a specific waitlist
+bot.command('list', async (ctx) => {
+  const chatId = BigInt(ctx.chat!.id);
+  const args = ctx.message.text.split(' ').slice(1);
+  
+  if (args.length === 0) {
+    return ctx.reply('Usage: /list <product name>\n\nTo see all waitlists, use /listwaitlists');
+  }
+
+  const productName = args.join(' ');
+
+  // Find the waitlist
+  const waitlist = await prisma.waitlist.findFirst({
+    where: { name: productName, chatId },
+    include: {
+      subscribers: true
+    }
+  });
+
+  if (!waitlist) {
+    return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+  }
+
+  if (waitlist.subscribers.length === 0) {
+    return ctx.reply(`📋 **${productName}** waitlist\n\nOwner: @${waitlist.ownerUsername}\nSubscribers: None yet`);
+  }
+
+  let message = `📋 **${productName}** waitlist\n\n`;
+  message += `Owner: @${waitlist.ownerUsername}\n`;
+  message += `Subscribers (${waitlist.subscribers.length}):\n\n`;
+  
+  for (const subscriber of waitlist.subscribers) {
+    if (subscriber.username) {
+      message += `• @${subscriber.username}\n`;
+    } else {
+      message += `• User ${subscriber.userId}\n`;
+    }
   }
 
   await ctx.reply(message, { parse_mode: 'Markdown' });
