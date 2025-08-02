@@ -52,13 +52,12 @@ bot.command('help', (ctx) => {
 • \`/mywaitlists\` - List your subscribed waitlists (shows current chat only in groups, shows all chats when DMing bot)
 
 📢 **Broadcasting:**
-• \`/broadcast <product> <message>\` - (Waitlist owner only) Send a message to everyone subscribed (Use this by directly DMing the bot)
+• \`/broadcast <product> <message>\` - (DM only) Send a message to everyone subscribed to your waitlist
 
 💡 **Tips:**
 - Add me to your group to manage waitlists
 - Only group admins can create waitlists
-- Only waitlist owners can broadcast messages
-- You can DM me directly for private commands
+- Broadcasting must be done via DM to keep groups clean
 - Use \`/mywaitlists\` in DM to see all your subscriptions across all groups`;
 
   ctx.reply(helpMessage, { parse_mode: 'Markdown' });
@@ -195,9 +194,14 @@ bot.command('unsubscribe', async (ctx) => {
 });
 
 bot.command('broadcast', async (ctx) => {
-    const chatId = BigInt(ctx.chat!.id);
     const fromUsername = ctx.from!.username;
+    const isPrivateChat = ctx.chat!.type === 'private';
     const args = ctx.message.text.split(' ').slice(1);
+  
+    // Only allow broadcasting via DM
+    if (!isPrivateChat) {
+      return ctx.reply('📢 Please DM me directly to send broadcasts. This keeps group chats clean!');
+    }
   
     if (args.length < 2) {
       return ctx.reply('Usage: /broadcast <productName> <message...>');
@@ -206,12 +210,16 @@ bot.command('broadcast', async (ctx) => {
     const productName = args[0];
     const broadcastText = args.slice(1).join(' ');
   
+    // Search across all chats for waitlists owned by this user
     const waitlist = await prisma.waitlist.findFirst({
-      where: { name: productName, chatId }
+      where: { 
+        name: productName,
+        ownerUsername: fromUsername 
+      }
     });
   
     if (!waitlist) {
-      return ctx.reply(`❗️ No waitlist named "${productName}" found.`);
+      return ctx.reply(`❗️ No waitlist named "${productName}" found that you own.`);
     }
   
     if (!fromUsername || waitlist.ownerUsername !== fromUsername) {
