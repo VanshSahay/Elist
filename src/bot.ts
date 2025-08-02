@@ -43,6 +43,7 @@ bot.command('help', (ctx) => {
 
 📋 **Waitlist Management:**
 • \`/openwaitlist <product> @username\` - (Admins only) Open a waitlist for a product on behalf of a user
+• \`/closewaitlist <product>\` - (Owner only) Close and delete a waitlist
 • \`/list\` - List all waitlists in the channel
 
 👥 **User Commands:**
@@ -101,6 +102,49 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
   
     await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.`);
   });
+
+// /closewaitlist command to close a waitlist (owner only)
+bot.command('closewaitlist', async (ctx) => {
+  const chatId = BigInt(ctx.chat!.id);
+  const fromUsername = ctx.from!.username;
+  const args = ctx.message.text.split(' ').slice(1);
+
+  if (!fromUsername) {
+    return ctx.reply('❌ You need a username to use this command.');
+  }
+
+  if (args.length === 0) {
+    return ctx.reply('Usage: /closewaitlist <product name>');
+  }
+
+  const productName = args.join(' ');
+
+  // Find the waitlist
+  const waitlist = await prisma.waitlist.findFirst({
+    where: { name: productName, chatId }
+  });
+
+  if (!waitlist) {
+    return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+  }
+
+  // Check if user is the owner
+  if (waitlist.ownerUsername !== fromUsername) {
+    return ctx.reply(`❌ Only @${waitlist.ownerUsername} can close this waitlist.`);
+  }
+
+  // Delete all subscribers first (due to foreign key constraints)
+  await prisma.subscriber.deleteMany({
+    where: { waitlistId: waitlist.id }
+  });
+
+  // Delete the waitlist
+  await prisma.waitlist.delete({
+    where: { id: waitlist.id }
+  });
+
+  await ctx.reply(`🗑️ Waitlist "${productName}" has been closed and deleted.`);
+});
 
 bot.command('subscribe', async (ctx) => {
     const chatId = BigInt(ctx.chat!.id);
