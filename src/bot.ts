@@ -11,15 +11,89 @@ const bot: Telegraf = new Telegraf(botToken);
 
 // Helper function to escape markdown characters in text
 function escapeMarkdown(text: string): string {
-  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
 }
 
-// Ping test
-bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
+// Store temporary registration messages to delete them later
+const registrationMessages = new Map<string, number>(); // userId -> messageId
 
-// /start command (welcome message)
-bot.start((ctx) => {
-  const welcomeMessage = `👋 **Welcome to Elist Bot!**
+// Track users who have been verified to receive DMs (to avoid spamming them)
+const verifiedUsers = new Set<string>(); // userId set
+
+async function checkUserRegistration(ctx: any): Promise<boolean> {
+    const userId = ctx.from!.id;
+    const userIdStr = userId.toString();
+    const chatId = ctx.chat!.id;
+    const username = ctx.from!.username || 'User';
+    
+    // If user is already verified, return true immediately
+    if (verifiedUsers.has(userIdStr)) {
+        return true;
+    }
+    
+    // Don't send duplicate registration messages if one is already pending
+    if (registrationMessages.has(userIdStr)) {
+        return false;
+    }
+    
+    // Try to send a silent test message to see if they can receive DMs
+    try {
+        // Send a very minimal test message that won't be intrusive
+        await ctx.telegram.sendMessage(userId, '🔔 Registration confirmed! You\'ll receive waitlist notifications here.', {
+            disable_notification: true // Silent message
+        });
+        // Mark user as verified so we don't check again
+        verifiedUsers.add(userIdStr);
+        return true; // They can receive DMs
+    } catch (e: any) {
+        // They can't receive DMs - send group registration prompt
+        if (e.description && e.description.includes("can't initiate conversation")) {
+            try {
+                const registrationPrompt = await ctx.reply(
+                    `👋 @${username}, to receive waitlist notifications, please DM me once by clicking @${ctx.botInfo.username} or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`
+                );
+                
+                // Store the message ID to delete it later
+                registrationMessages.set(userIdStr, registrationPrompt.message_id);
+                
+                // Auto-delete the message after 1 minute if they haven't registered
+                setTimeout(async () => {
+                    try {
+                        if (registrationMessages.has(userIdStr)) {
+                            await ctx.telegram.deleteMessage(chatId, registrationPrompt.message_id);
+                            registrationMessages.delete(userIdStr);
+                        }
+                    } catch (e) {
+                        // Message might already be deleted
+                    }
+                }, 1 * 60 * 1000); // 1 minute
+                
+                return false;
+            } catch (e) {
+                console.error('Failed to send registration prompt:', e);
+                return false;
+            }
+        }
+        return false;
+    }
+}
+
+// Handle when users start a conversation - delete any pending registration messages
+bot.start(async (ctx) => {
+    const userId = ctx.from!.id;
+    const userIdStr = userId.toString();
+    
+    // Mark user as verified since they can now receive DMs
+    verifiedUsers.add(userIdStr);
+    
+    // Delete any pending registration message in groups
+    if (registrationMessages.has(userIdStr)) {
+        const messageId = registrationMessages.get(userIdStr);
+        registrationMessages.delete(userIdStr);
+        // Note: We don't have the chat ID here, so the message will auto-delete via timeout
+    }
+    
+    const welcomeMessage = `👋 **Welcome to Elist Bot!**
 
 🎯 **What I do:**
 I help you manage product waitlists in your Telegram groups! Create waitlists, let users subscribe, and broadcast updates directly to interested users.
@@ -27,15 +101,18 @@ I help you manage product waitlists in your Telegram groups! Create waitlists, l
 🚀 **Quick Start:**
 1️⃣ Add me to your group
 2️⃣ Use \`/openwaitlist <product> @username\` (admins only)
-3️⃣ Users can \`/subscribe <product>\` to join
+3️⃣ Users can \`/subscribe <product>\` to join (I'll guide new users to register first)
 4️⃣ Waitlist owners can \`/broadcast <product> <message>\` to notify subscribers
 
 📚 **Need help?** Use \`/help\` to see all available commands!
 
 💡 **Tip:** You can also DM me directly for private commands like viewing your waitlists.`;
 
-  ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
+    ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
 });
+
+// Ping test
+bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
 
 // /help command to show all available commands
 bot.command('help', (ctx) => {
@@ -64,7 +141,8 @@ bot.command('help', (ctx) => {
 - Add me to your group to manage waitlists
 - Only group admins can create and close waitlists
 - Broadcasting must be done via DM to keep groups clean
-- Use \`/mywaitlists\` in DM to see all your subscriptions across all groups`;
+- Use \`/mywaitlists\` in DM to see all your subscriptions across all groups
+- New users will be prompted to register with me before joining waitlists`;
 
   ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
@@ -159,16 +237,19 @@ bot.command('subscribe', async (ctx) => {
     const chatId = BigInt(ctx.chat!.id);
     const userId = BigInt(ctx.from!.id);
     const username = ctx.from!.username || '';
+    const isPrivateChat = ctx.chat!.type === 'private';
     const args = ctx.message.text.split(' ').slice(1);
     if (args.length === 0) {
         return ctx.reply('Usage: /subscribe <productName>');
     }
     const productName = args.join(' ');
+    
     // Find the waitlist in this chat
     const waitlist = await prisma.waitlist.findFirst({ where: { name: productName, chatId } });
     if (!waitlist) {
         return ctx.reply(`❗️ No waitlist named "${productName}" found.`);
     }
+    
     // Check if already subscribed
     const existing = await prisma.subscriber.findFirst({
         where: { waitlistId: waitlist.id, userId }
@@ -176,6 +257,15 @@ bot.command('subscribe', async (ctx) => {
     if (existing) {
         return ctx.reply(`You are already on the "${productName}" waitlist.`);
     }
+    
+    // For group chats, check if user can receive DMs before subscribing
+    if (!isPrivateChat) {
+        const canReceiveDMs = await checkUserRegistration(ctx);
+        if (!canReceiveDMs) {
+            return; // Registration prompt was sent, don't proceed with subscription
+        }
+    }
+    
     // Add subscriber
     await prisma.subscriber.create({
         data: { waitlistId: waitlist.id, userId, username }
@@ -230,6 +320,15 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     
     if (existing) {
         return ctx.reply(`You are already on the "${waitlist.name}" waitlist.`);
+    }
+    
+    // For group chats, check if user can receive DMs before subscribing
+    const isPrivateChat = ctx.chat!.type === 'private';
+    if (!isPrivateChat) {
+        const canReceiveDMs = await checkUserRegistration(ctx);
+        if (!canReceiveDMs) {
+            return; // Registration prompt was sent, don't proceed with subscription
+        }
     }
     
     // Add subscriber
