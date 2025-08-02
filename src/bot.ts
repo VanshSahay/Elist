@@ -12,9 +12,54 @@ const bot: Telegraf = new Telegraf(botToken);
 // Ping test
 bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
 
-// /start command (optional welcome message)
+// /start command (welcome message)
 bot.start((ctx) => {
-  ctx.reply('👋 Hey! Add me to your group and use /openwaitlist <product> @username to open a waitlist.');
+  const welcomeMessage = `👋 **Welcome to Elist Bot!**
+
+🎯 **What I do:**
+I help you manage product waitlists in your Telegram groups! Create waitlists, let users subscribe, and broadcast updates directly to interested users.
+
+🚀 **Quick Start:**
+1️⃣ Add me to your group
+2️⃣ Use \`/openwaitlist <product> @username\` (admins only)
+3️⃣ Users can \`/subscribe <product>\` to join
+4️⃣ Waitlist owners can \`/broadcast <product> <message>\` to notify subscribers
+
+📚 **Need help?** Use \`/help\` to see all available commands!
+
+💡 **Tip:** You can also DM me directly for private commands like viewing your waitlists.`;
+
+  ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
+});
+
+// /help command to show all available commands
+bot.command('help', (ctx) => {
+  const helpMessage = `🤖 **Elist Bot Commands**
+
+📌 **Basic Commands:**
+• \`/start\` - Start the bot and get help
+• \`/ping\` - Check if the bot is alive
+• \`/help\` - Show this help message
+
+📋 **Waitlist Management:**
+• \`/openwaitlist <product> @username\` - (Admins only) Open a waitlist for a product on behalf of a user
+• \`/list\` - List all waitlists in the channel
+
+👥 **User Commands:**
+• \`/subscribe <product>\` - Join a waitlist for a product
+• \`/unsubscribe <product>\` - Leave a waitlist
+• \`/mywaitlists\` - List of waitlists you have subscribed to
+
+📢 **Broadcasting:**
+• \`/broadcast <product> <message>\` - (Waitlist owner only) Send a message to everyone subscribed (Use this by directly DMing the bot)
+
+💡 **Tips:**
+- Add me to your group to manage waitlists
+- Only group admins can create waitlists
+- Only waitlist owners can broadcast messages
+- You can DM me directly for private commands`;
+
+  ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
 
 async function isUserAdmin(ctx: any): Promise<boolean> {
