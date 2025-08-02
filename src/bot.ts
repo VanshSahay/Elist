@@ -129,10 +129,13 @@ bot.command('broadcast', async (ctx) => {
   
     const subs = await prisma.subscriber.findMany({ where: { waitlistId: waitlist.id } });
   
+    // Add product and owner info to the broadcast message
+    const fullBroadcastMessage = `${broadcastText}\n\nYou are receiving this message because you are on the waitlist for ${productName} by @${waitlist.ownerUsername}`;
+  
     let sentCount = 0;
     for (const sub of subs) {
       try {
-        await ctx.telegram.sendMessage(Number(sub.userId), broadcastText);
+        await ctx.telegram.sendMessage(Number(sub.userId), fullBroadcastMessage);
         sentCount++;
       } catch (e) {
         console.error(`Failed to send to ${sub.userId}:`, e);
@@ -143,5 +146,56 @@ bot.command('broadcast', async (ctx) => {
   });
   
 
+
+// /list command to view all available waitlists in the current chat
+bot.command('list', async (ctx) => {
+  const chatId = BigInt(ctx.chat!.id);
+  
+  const waitlists = await prisma.waitlist.findMany({
+    where: { chatId },
+    include: {
+      _count: {
+        select: { subscribers: true }
+      }
+    }
+  });
+
+  if (waitlists.length === 0) {
+    return ctx.reply('📋 No waitlists available in this chat.');
+  }
+
+  let message = '📋 **Available Waitlists:**\n\n';
+  for (const waitlist of waitlists) {
+    message += `• **${waitlist.name}**\n`;
+    message += `  Owner: @${waitlist.ownerUsername}\n`;
+    message += `  Subscribers: ${waitlist._count.subscribers}\n\n`;
+  }
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+// /mywaitlists command to view user's joined waitlists
+bot.command('mywaitlists', async (ctx) => {
+  const userId = BigInt(ctx.from!.id);
+  
+  const subscriptions = await prisma.subscriber.findMany({
+    where: { userId },
+    include: {
+      waitlist: true
+    }
+  });
+
+  if (subscriptions.length === 0) {
+    return ctx.reply('📝 You are not subscribed to any waitlists.');
+  }
+
+  let message = '📝 **Your Waitlists:**\n\n';
+  for (const sub of subscriptions) {
+    message += `• **${sub.waitlist.name}**\n`;
+    message += `  Owner: @${sub.waitlist.ownerUsername}\n\n`;
+  }
+
+  await ctx.reply(message, { parse_mode: 'Markdown' });
+});
 
 export { bot };

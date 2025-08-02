@@ -164,15 +164,6 @@ ctx.telegram.sendMessage(userId, message);
 
 ---
 
-## 💡 Future Improvements
-
-* `/list` to view all available waitlists
-* `/mywaitlists` to view a user’s joined lists
-* Admin-only checks for `/broadcast`
-* Reactions or inline buttons to join/leave
-
----
-
 ## 👥 Credits
 
 Built by [Vansh Sahay](https://github.com/VanshSahay) \
