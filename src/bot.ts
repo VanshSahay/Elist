@@ -101,65 +101,69 @@ async function checkUserRegistration(ctx: any): Promise<boolean> {
 bot.start(async (ctx) => {
     const userId = ctx.from!.id;
     const userIdStr = userId.toString();
+    const isPrivateChat = ctx.chat!.type === 'private';
     
-    // Mark user as verified since they can now receive DMs
-    verifiedUsers.add(userIdStr);
-    
-    // Delete any pending registration message in groups
-    if (registrationMessages.has(userIdStr)) {
-        const msgInfo = registrationMessages.get(userIdStr)!;
-        try {
-            await ctx.telegram.deleteMessage(msgInfo.chatId, msgInfo.messageId);
-        } catch (e) {
-            // Message might already be deleted
+    // Only mark as verified and complete registration if this is a private chat (DM)
+    if (isPrivateChat) {
+        // Mark user as verified since they can now receive DMs
+        verifiedUsers.add(userIdStr);
+        
+        // Delete any pending registration message in groups
+        if (registrationMessages.has(userIdStr)) {
+            const msgInfo = registrationMessages.get(userIdStr)!;
+            try {
+                await ctx.telegram.deleteMessage(msgInfo.chatId, msgInfo.messageId);
+            } catch (e) {
+                // Message might already be deleted
+            }
+            registrationMessages.delete(userIdStr);
         }
-        registrationMessages.delete(userIdStr);
-    }
-    
-    // Complete any pending subscription
-    if (pendingSubscriptions.has(userIdStr)) {
-        const subscription = pendingSubscriptions.get(userIdStr)!;
-        try {
-            // Find the waitlist and complete the subscription
-            const waitlist = await prisma.waitlist.findFirst({ 
-                where: { 
-                    name: subscription.productName, 
-                    chatId: BigInt(subscription.chatId) 
-                } 
-            });
-            
-            if (waitlist) {
-                // Check if they're not already subscribed
-                const existing = await prisma.subscriber.findFirst({
-                    where: { waitlistId: waitlist.id, userId: BigInt(userId) }
+        
+        // Complete any pending subscription
+        if (pendingSubscriptions.has(userIdStr)) {
+            const subscription = pendingSubscriptions.get(userIdStr)!;
+            try {
+                // Find the waitlist and complete the subscription
+                const waitlist = await prisma.waitlist.findFirst({ 
+                    where: { 
+                        name: subscription.productName, 
+                        chatId: BigInt(subscription.chatId) 
+                    } 
                 });
                 
-                if (!existing) {
-                    // Complete the subscription
-                    await prisma.subscriber.create({
-                        data: { 
-                            waitlistId: waitlist.id, 
-                            userId: BigInt(userId), 
-                            username: ctx.from!.username || '' 
-                        }
+                if (waitlist) {
+                    // Check if they're not already subscribed
+                    const existing = await prisma.subscriber.findFirst({
+                        where: { waitlistId: waitlist.id, userId: BigInt(userId) }
                     });
+                    
+                    if (!existing) {
+                        // Complete the subscription
+                        await prisma.subscriber.create({
+                            data: { 
+                                waitlistId: waitlist.id, 
+                                userId: BigInt(userId), 
+                                username: ctx.from!.username || '' 
+                            }
+                        });
+                    }
                 }
+                
+                // Add thumbs up reaction to their original subscribe message
+                await ctx.telegram.callApi('setMessageReaction', {
+                    chat_id: subscription.chatId,
+                    message_id: subscription.messageId,
+                    reaction: [{ type: 'emoji', emoji: '👍' }],
+                });
+            } catch (e) {
+                // Subscription might fail, that's okay
+                console.error('Failed to complete pending subscription:', e);
             }
-            
-            // Add thumbs up reaction to their original subscribe message
-            await ctx.telegram.callApi('setMessageReaction', {
-                chat_id: subscription.chatId,
-                message_id: subscription.messageId,
-                reaction: [{ type: 'emoji', emoji: '👍' }],
-            });
-        } catch (e) {
-            // Subscription might fail, that's okay
-            console.error('Failed to complete pending subscription:', e);
+            pendingSubscriptions.delete(userIdStr);
         }
-        pendingSubscriptions.delete(userIdStr);
-    }
-    
-    const welcomeMessage = `👋 **Welcome to Elist Bot!**
+        
+        // Welcome message for private chat only
+        const welcomeMessage = `👋 **Welcome to Elist Bot!**
 
 🎯 **What I do:**
 I help you manage product waitlists in your Telegram groups! Create waitlists, let users subscribe, and broadcast updates directly to interested users.
@@ -174,7 +178,11 @@ I help you manage product waitlists in your Telegram groups! Create waitlists, l
 
 💡 **Tip:** You can also DM me directly for private commands like viewing your waitlists.`;
 
-    ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
+        ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
+    } else {
+        // In group chats, just acknowledge the command without doing registration
+        ctx.reply('👋 Hi! To use my features, please add me to your group and use `/help` to see available commands.', { parse_mode: 'Markdown' });
+    }
 });
 
 // Ping test
