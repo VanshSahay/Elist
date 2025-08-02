@@ -15,10 +15,13 @@ function escapeMarkdown(text: string): string {
 }
 
 // Store temporary registration messages to delete them later
-const registrationMessages = new Map<string, number>(); // userId -> messageId
+const registrationMessages = new Map<string, {messageId: number, chatId: number}>(); // userId -> {messageId, chatId}
 
 // Track users who have been verified to receive DMs (to avoid spamming them)
 const verifiedUsers = new Set<string>(); // userId set
+
+// Track pending subscriptions waiting for user registration
+const pendingSubscriptions = new Map<string, {productName: string, messageId: number, chatId: number}>(); // userId -> subscription details
 
 async function checkUserRegistration(ctx: any): Promise<boolean> {
     const userId = ctx.from!.id;
@@ -50,21 +53,37 @@ async function checkUserRegistration(ctx: any): Promise<boolean> {
         if (e.description && e.description.includes("can't initiate conversation")) {
             try {
                 const registrationPrompt = await ctx.reply(
-                    `👋 @${username}, to receive waitlist notifications, please DM me once by clicking @${ctx.botInfo.username} or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`
+                    `👋 @${username}, to receive waitlist notifications, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`,
+                    {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: '💬 Start Chat with Bot', url: `https://t.me/${ctx.botInfo.username}?start=register` }
+                            ]]
+                        }
+                    }
                 );
                 
-                // Store the message ID to delete it later
-                registrationMessages.set(userIdStr, registrationPrompt.message_id);
+                // Store the message ID and chat ID to delete it later
+                registrationMessages.set(userIdStr, {
+                    messageId: registrationPrompt.message_id,
+                    chatId: chatId
+                });
                 
-                // Auto-delete the message after 1 minute if they haven't registered
+                // Auto-delete the message after 1 minute if they haven't registered yet
                 setTimeout(async () => {
                     try {
+                        // Only delete if the message still exists (user hasn't registered via /start)
                         if (registrationMessages.has(userIdStr)) {
-                            await ctx.telegram.deleteMessage(chatId, registrationPrompt.message_id);
+                            const msgInfo = registrationMessages.get(userIdStr)!;
+                            await ctx.telegram.deleteMessage(msgInfo.chatId, msgInfo.messageId);
                             registrationMessages.delete(userIdStr);
+                            // Also clean up any pending subscription since timeout expired
+                            pendingSubscriptions.delete(userIdStr);
                         }
                     } catch (e) {
-                        // Message might already be deleted
+                        // Message might already be deleted or chat inaccessible
+                        registrationMessages.delete(userIdStr);
+                        pendingSubscriptions.delete(userIdStr);
                     }
                 }, 1 * 60 * 1000); // 1 minute
                 
@@ -88,9 +107,56 @@ bot.start(async (ctx) => {
     
     // Delete any pending registration message in groups
     if (registrationMessages.has(userIdStr)) {
-        const messageId = registrationMessages.get(userIdStr);
+        const msgInfo = registrationMessages.get(userIdStr)!;
+        try {
+            await ctx.telegram.deleteMessage(msgInfo.chatId, msgInfo.messageId);
+        } catch (e) {
+            // Message might already be deleted
+        }
         registrationMessages.delete(userIdStr);
-        // Note: We don't have the chat ID here, so the message will auto-delete via timeout
+    }
+    
+    // Complete any pending subscription
+    if (pendingSubscriptions.has(userIdStr)) {
+        const subscription = pendingSubscriptions.get(userIdStr)!;
+        try {
+            // Find the waitlist and complete the subscription
+            const waitlist = await prisma.waitlist.findFirst({ 
+                where: { 
+                    name: subscription.productName, 
+                    chatId: BigInt(subscription.chatId) 
+                } 
+            });
+            
+            if (waitlist) {
+                // Check if they're not already subscribed
+                const existing = await prisma.subscriber.findFirst({
+                    where: { waitlistId: waitlist.id, userId: BigInt(userId) }
+                });
+                
+                if (!existing) {
+                    // Complete the subscription
+                    await prisma.subscriber.create({
+                        data: { 
+                            waitlistId: waitlist.id, 
+                            userId: BigInt(userId), 
+                            username: ctx.from!.username || '' 
+                        }
+                    });
+                }
+            }
+            
+            // Add thumbs up reaction to their original subscribe message
+            await ctx.telegram.callApi('setMessageReaction', {
+                chat_id: subscription.chatId,
+                message_id: subscription.messageId,
+                reaction: [{ type: 'emoji', emoji: '👍' }],
+            });
+        } catch (e) {
+            // Subscription might fail, that's okay
+            console.error('Failed to complete pending subscription:', e);
+        }
+        pendingSubscriptions.delete(userIdStr);
     }
     
     const welcomeMessage = `👋 **Welcome to Elist Bot!**
@@ -262,7 +328,13 @@ bot.command('subscribe', async (ctx) => {
     if (!isPrivateChat) {
         const canReceiveDMs = await checkUserRegistration(ctx);
         if (!canReceiveDMs) {
-            return; // Registration prompt was sent, don't proceed with subscription
+            // Store this subscription attempt for completion after registration
+            pendingSubscriptions.set(userId.toString(), {
+                productName: productName,
+                messageId: ctx.message.message_id,
+                chatId: ctx.chat.id
+            });
+            return; // Registration prompt was sent, don't proceed with subscription yet
         }
     }
     
@@ -327,7 +399,13 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     if (!isPrivateChat) {
         const canReceiveDMs = await checkUserRegistration(ctx);
         if (!canReceiveDMs) {
-            return; // Registration prompt was sent, don't proceed with subscription
+            // Store this subscription attempt for completion after registration
+            pendingSubscriptions.set(userId.toString(), {
+                productName: waitlist.name,
+                messageId: ctx.message.message_id,
+                chatId: ctx.chat.id
+            });
+            return; // Registration prompt was sent, don't proceed with subscription yet
         }
     }
     
