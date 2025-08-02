@@ -43,7 +43,7 @@ bot.command('help', (ctx) => {
 
 📋 **Waitlist Management:**
 • \`/openwaitlist <product> @username\` - (Admins only) Open a waitlist for a product on behalf of a user
-• \`/closewaitlist <product>\` - (Owner only) Close and delete a waitlist
+• \`/closewaitlist <product>\` - (Owner or Admin) Close and delete a waitlist
 • \`/list\` - List all waitlists in the channel
 
 👥 **User Commands:**
@@ -56,7 +56,7 @@ bot.command('help', (ctx) => {
 
 💡 **Tips:**
 - Add me to your group to manage waitlists
-- Only group admins can create waitlists
+- Only group admins can create and close waitlists
 - Broadcasting must be done via DM to keep groups clean
 - Use \`/mywaitlists\` in DM to see all your subscriptions across all groups`;
 
@@ -103,7 +103,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
     await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.`);
   });
 
-// /closewaitlist command to close a waitlist (owner only)
+// /closewaitlist command to close a waitlist (owner or admin)
 bot.command('closewaitlist', async (ctx) => {
   const chatId = BigInt(ctx.chat!.id);
   const fromUsername = ctx.from!.username;
@@ -128,9 +128,12 @@ bot.command('closewaitlist', async (ctx) => {
     return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
   }
 
-  // Check if user is the owner
-  if (waitlist.ownerUsername !== fromUsername) {
-    return ctx.reply(`❌ Only @${waitlist.ownerUsername} can close this waitlist.`);
+  // Check if user is the owner or an admin
+  const isOwner = waitlist.ownerUsername === fromUsername;
+  const isAdmin = await isUserAdmin(ctx);
+  
+  if (!isOwner && !isAdmin) {
+    return ctx.reply(`❌ Only @${waitlist.ownerUsername} or group admins can close this waitlist.`);
   }
 
   // Delete all subscribers first (due to foreign key constraints)

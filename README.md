@@ -1,17 +1,19 @@
 
 # 📝 Elist — Telegram Waitlist Bot
 
-A Telegram bot for managing multiple waitlists inside community groups, built with **Telegraf**, **TypeScript**, **Prisma**, and **Vercel serverless functions**.
+A powerful Telegram bot for managing multiple waitlists inside community groups, built with **Telegraf**, **TypeScript**, **Prisma**, and **Vercel serverless functions**.
 
 ---
 
 ## 🚀 What It Does
 
-- Admins can open named waitlists (e.g., for a product launch).
-- Members can subscribe/unsubscribe via `/subscribe` and `/unsubscribe`.
-- Admins can broadcast messages privately to all subscribers of a waitlist.
-- The bot works entirely **inside Telegram**, using commands and DMs.
-- Multiple waitlists can be managed **in a single group**.
+- **🔧 Admin Management**: Group admins can create and close waitlists for any user
+- **👥 User Subscriptions**: Members can easily subscribe/unsubscribe from waitlists
+- **📢 Private Broadcasting**: Waitlist owners broadcast messages via DM to keep groups clean
+- **🏠 Chat Isolation**: Each group has completely separate waitlists and subscribers
+- **🤖 Smart Context**: Commands behave differently in groups vs DMs for optimal UX
+- **📊 Easy Tracking**: List all waitlists in a group or track personal subscriptions
+- **🛡️ Secure**: Only authorized users can perform sensitive operations
 
 ---
 
@@ -60,14 +62,80 @@ DATABASE_URL=your_postgres_connection_string
 
 ## 💬 Available Bot Commands
 
-| Command                       | Who Uses It     | What It Does                                             |
-| ----------------------------- | --------------- | -------------------------------------------------------- |
-| `/start`                      | Anyone          | Shows intro/help message                                 |
-| `/ping`                       | Anyone          | Pings the bot to check if it's alive                     |
-| `/openwaitlist <name>`        | Admins          | Opens a new waitlist for a given product in the group    |
-| `/subscribe <name>`           | Anyone          | Subscribes the user to the given waitlist                |
-| `/unsubscribe <name>`         | Anyone          | Unsubscribes the user from the given waitlist            |
-| `/broadcast <name> <message>` | Admin (private) | Sends a private message to all subscribers of a waitlist |
+### 📌 Basic Commands
+
+| Command | Who Can Use | Description |
+|---------|-------------|-------------|
+| `/start` | Anyone | Welcome message with quick start guide |
+| `/ping` | Anyone | Check if the bot is alive |
+| `/help` | Anyone | Show all available commands with descriptions |
+
+### 📋 Waitlist Management
+
+| Command | Who Can Use | Description |
+|---------|-------------|-------------|
+| `/openwaitlist <product> @username` | Group Admins | Create a waitlist and assign ownership |
+| `/closewaitlist <product>` | Owner or Admins | Close and delete a waitlist permanently |
+| `/list` | Anyone | List all waitlists in the current group |
+
+### 👥 User Commands
+
+| Command | Who Can Use | Description |
+|---------|-------------|-------------|
+| `/subscribe <product>` | Anyone | Join a waitlist for a product |
+| `/unsubscribe <product>` | Anyone | Leave a waitlist |
+| `/mywaitlists` | Anyone | **Context-aware**: Shows current group's subscriptions in groups, all subscriptions in DM |
+
+### 📢 Broadcasting
+
+| Command | Who Can Use | Description |
+|---------|-------------|-------------|
+| `/broadcast <product> <message>` | Waitlist Owner | **DM only** - Send message to all subscribers (keeps groups clean) |
+
+---
+
+## 🎯 Key Features
+
+### 🏠 **Complete Chat Isolation**
+- Each group has completely separate waitlists
+- Same product names can exist in multiple groups
+- No cross-group interference
+
+### 🤖 **Smart Context Awareness**
+- **In Groups**: `/mywaitlists` shows only current group's subscriptions
+- **In DMs**: `/mywaitlists` shows all subscriptions across all groups with group names
+- **Broadcasting**: Only works via DM to keep group chats clean
+
+### 🛡️ **Permission System**
+- **Group Admins**: Can create and close any waitlist
+- **Waitlist Owners**: Can broadcast and close their own waitlists
+- **Regular Users**: Can subscribe/unsubscribe and view lists
+
+### 📢 **Clean Broadcasting**
+- All broadcasts happen via DM to bot
+- Automatic message footer shows waitlist and owner info
+- Group chats stay focused on discussion
+
+---
+
+## 📖 Example Usage Workflows
+
+### 🎯 **Creating a Waitlist**
+1. **Admin** adds bot to group
+2. **Admin** runs: `/openwaitlist FlowWeave @alice`
+3. **Users** can now: `/subscribe FlowWeave`
+4. **@alice** can DM bot: `/broadcast FlowWeave New feature coming soon!`
+
+### 👥 **User Journey**
+1. **User** runs: `/list` (sees all group waitlists)
+2. **User** runs: `/subscribe FlowWeave`
+3. **User** runs: `/mywaitlists` (sees their subscriptions)
+4. **User** receives broadcast: "New feature coming soon!\n\nYou are receiving this message because you are on the waitlist for FlowWeave by @alice"
+
+### 🔧 **Admin Management**
+1. **Admin** runs: `/list` (sees all waitlists with subscriber counts)
+2. **Admin** can: `/closewaitlist FlowWeave` (cleanup unused lists)
+3. **Owners** can also close their own waitlists
 
 ---
 
@@ -153,14 +221,21 @@ ctx.telegram.sendMessage(userId, message);
 
 ## ✅ Testing
 
-| Feature              | Tested |
-| -------------------- | ------ |
-| `/start` welcome     | ✅      |
-| `/ping` health check | ✅      |
-| `/openwaitlist`      | ✅      |
-| `/subscribe`         | ✅      |
-| `/unsubscribe`       | ✅      |
-| `/broadcast`         | ✅      |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `/start` - Welcome guide | ✅ | Shows comprehensive quick start |
+| `/ping` - Health check | ✅ | Simple pong response |
+| `/help` - Command list | ✅ | Complete command documentation |
+| `/openwaitlist` - Create waitlist | ✅ | Admin-only, assigns ownership |
+| `/closewaitlist` - Delete waitlist | ✅ | Owner or admin permissions |
+| `/subscribe` - Join waitlist | ✅ | Chat-specific, duplicate protection |
+| `/unsubscribe` - Leave waitlist | ✅ | Safe removal, always succeeds |
+| `/broadcast` - Send messages | ✅ | DM-only, automatic footer |
+| `/list` - Show group waitlists | ✅ | Shows names, owners, subscriber counts |
+| `/mywaitlists` - Personal view | ✅ | Context-aware behavior |
+| **Chat Isolation** | ✅ | Complete separation between groups |
+| **Permission System** | ✅ | Admin, owner, user roles working |
+| **Error Handling** | ✅ | Graceful fallbacks and clear messages |
 
 ---
 
