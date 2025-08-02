@@ -23,7 +23,7 @@ const verifiedUsers = new Set<string>(); // userId set
 // Track pending subscriptions waiting for user registration
 const pendingSubscriptions = new Map<string, {productName: string, messageId: number, chatId: number}>(); // userId -> subscription details
 
-async function checkUserRegistration(ctx: any): Promise<boolean> {
+async function checkUserRegistration(ctx: any, productName: string, ownerUsername: string): Promise<boolean> {
     const userId = ctx.from!.id;
     const userIdStr = userId.toString();
     const chatId = ctx.chat!.id;
@@ -42,7 +42,7 @@ async function checkUserRegistration(ctx: any): Promise<boolean> {
     // Try to send a silent test message to see if they can receive DMs
     try {
         // Send a very minimal test message that won't be intrusive
-        await ctx.telegram.sendMessage(userId, '🔔 Registration confirmed! You\'ll receive waitlist notifications here.', {
+        await ctx.telegram.sendMessage(userId, `🔔 Registration confirmed! You'll receive waitlist notifications here for "${productName}" by @${ownerUsername}.`, {
             disable_notification: true // Silent message
         });
         // Mark user as verified so we don't check again
@@ -53,7 +53,7 @@ async function checkUserRegistration(ctx: any): Promise<boolean> {
         if (e.description && e.description.includes("can't initiate conversation")) {
             try {
                 const registrationPrompt = await ctx.reply(
-                    `👋 @${username}, to receive waitlist notifications, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`,
+                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`,
                     {
                         reply_markup: {
                             inline_keyboard: [[
@@ -334,7 +334,7 @@ bot.command('subscribe', async (ctx) => {
     
     // For group chats, check if user can receive DMs before subscribing
     if (!isPrivateChat) {
-        const canReceiveDMs = await checkUserRegistration(ctx);
+        const canReceiveDMs = await checkUserRegistration(ctx, productName, waitlist.ownerUsername);
         if (!canReceiveDMs) {
             // Store this subscription attempt for completion after registration
             pendingSubscriptions.set(userId.toString(), {
@@ -405,7 +405,7 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     // For group chats, check if user can receive DMs before subscribing
     const isPrivateChat = ctx.chat!.type === 'private';
     if (!isPrivateChat) {
-        const canReceiveDMs = await checkUserRegistration(ctx);
+        const canReceiveDMs = await checkUserRegistration(ctx, waitlist.name, waitlist.ownerUsername);
         if (!canReceiveDMs) {
             // Store this subscription attempt for completion after registration
             pendingSubscriptions.set(userId.toString(), {
