@@ -1,5 +1,5 @@
 import { Telegraf } from 'telegraf';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './lib/prisma';
 import 'dotenv/config';
 
 const botToken = process.env.BOT_TOKEN;
@@ -8,7 +8,6 @@ if (!botToken) {
 }
 
 const bot: Telegraf = new Telegraf(botToken);
-const prisma = new PrismaClient();
 
 // Ping test
 bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
@@ -145,4 +144,4 @@ bot.command('broadcast', async (ctx) => {
   
 
 
-export { bot, prisma };
+export { bot };

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "ts-node src/index.ts",
     "start": "node dist/src/index.js",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate",
+    "vercel-build": "prisma generate && npx tsc --skipLibCheck",
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",
     "postinstall": "prisma generate"

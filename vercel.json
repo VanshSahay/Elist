@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "prisma generate",
   "builds": [
     {
       "src": "api/webhook.ts",
@@ -12,6 +12,11 @@
       "src": "/api/webhook",
       "dest": "api/webhook.ts"
     }
-  ]
+  ],
+  "functions": {
+    "api/webhook.ts": {
+      "includeFiles": "prisma/**"
+    }
+  }
 }
   
