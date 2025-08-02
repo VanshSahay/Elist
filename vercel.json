@@ -1,6 +1,4 @@
 {
-  "version": 2,
-  "buildCommand": "prisma generate",
   "functions": {
     "api/webhook.ts": {
       "runtime": "@vercel/node@3.0.7",

@@ -11,7 +11,8 @@
     "vercel-build": "prisma generate && npx tsc --skipLibCheck",
     "migrate": "prisma migrate dev",
     "generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "vercel-postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
