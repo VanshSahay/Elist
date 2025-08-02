@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+const { PrismaClient } = require('@prisma/client');
 
 declare global {
-  var __prisma: PrismaClient | undefined;
+  var __prisma: any | undefined;
 }
 
 // PrismaClient is attached to the `global` object in development to prevent
