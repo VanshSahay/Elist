@@ -53,8 +53,8 @@ bot.command('help', (ctx) => {
 • \`/list <product>\` - Show all subscribers of a specific waitlist
 
 👥 **User Commands:**
-• \`/subscribe <product>\` - Join a waitlist for a product
-• \`/unsubscribe <product>\` - Leave a waitlist
+• \`/subscribe <product>\` - Join a waitlist (reacts with ✅ for success, ➖ if already subscribed)
+• \`/unsubscribe <product>\` - Leave a waitlist (reacts with ✅ for success)
 • \`/mywaitlists\` - List your subscribed waitlists (shows current chat only in groups, shows all chats when DMing bot)
 
 📢 **Broadcasting:**
@@ -174,13 +174,13 @@ bot.command('subscribe', async (ctx) => {
         where: { waitlistId: waitlist.id, userId }
     });
     if (existing) {
-        return ctx.reply(`You are already on the "${productName}" waitlist.`);
+        return ctx.react('➖' as any); // React with minus to indicate already subscribed
     }
     // Add subscriber
     await prisma.subscriber.create({
         data: { waitlistId: waitlist.id, userId, username }
     });
-    await ctx.reply(`You have been subscribed to "${productName}"!`);
+    await ctx.react('✅' as any); // React with checkmark for successful subscription
 });
 
 bot.command('unsubscribe', async (ctx) => {
@@ -199,7 +199,7 @@ bot.command('unsubscribe', async (ctx) => {
     await prisma.subscriber.deleteMany({
         where: { waitlistId: waitlist.id, userId }
     });
-    await ctx.reply(`You have been removed from the "${productName}" waitlist.`);
+    await ctx.react('✅' as any); // React with checkmark for successful unsubscription
 });
 
 bot.command('broadcast', async (ctx) => {
