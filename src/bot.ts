@@ -59,7 +59,7 @@ bot.command('help', (ctx) => {
 - Only group admins can create waitlists
 - Only waitlist owners can broadcast messages
 - You can DM me directly for private commands
-- Use \`/mywaitlists\` in DM to see all your subscriptions across all chats`;
+- Use \`/mywaitlists\` in DM to see all your subscriptions across all groups`;
 
   ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
@@ -285,9 +285,24 @@ bot.command('mywaitlists', async (ctx) => {
 
     let message = '📝 **All Your Waitlists:**\n\n';
     for (const sub of subscriptions) {
+      let chatName = 'Unknown Chat';
+      try {
+        const chat = await ctx.telegram.getChat(Number(sub.waitlist.chatId));
+        if (chat.type === 'group' || chat.type === 'supergroup') {
+          chatName = (chat as any).title || `Group ${sub.waitlist.chatId}`;
+        } else if (chat.type === 'channel') {
+          chatName = (chat as any).title || `Channel ${sub.waitlist.chatId}`;
+        } else {
+          chatName = `Chat ${sub.waitlist.chatId}`;
+        }
+      } catch (e) {
+        console.error(`Failed to get chat info for ${sub.waitlist.chatId}:`, e);
+        chatName = `Chat ${sub.waitlist.chatId}`;
+      }
+
       message += `• **${sub.waitlist.name}**\n`;
       message += `  Owner: @${sub.waitlist.ownerUsername}\n`;
-      message += `  Chat ID: \`${sub.waitlist.chatId}\`\n\n`;
+      message += `  Group: ${chatName}\n\n`;
     }
 
     await ctx.reply(message, { parse_mode: 'Markdown' });
