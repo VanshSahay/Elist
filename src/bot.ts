@@ -1,5 +1,6 @@
 import { Telegraf } from 'telegraf';
 import { prisma } from './lib/prisma';
+import { analytics } from './lib/analytics';
 import 'dotenv/config';
 
 const botToken = process.env.BOT_TOKEN;
@@ -8,6 +9,19 @@ if (!botToken) {
 }
 
 const bot: Telegraf = new Telegraf(botToken);
+
+// Track bot startup
+analytics.trackBotStartup();
+
+// Error handling middleware
+bot.catch((err: any, ctx) => {
+    console.error('Bot error:', err);
+    analytics.trackError(ctx.from?.id?.toString() || null, err.message || 'Unknown error', {
+        command: ctx.updateType,
+        chat_type: ctx.chat?.type || 'unknown',
+        error_stack: err.stack || 'No stack trace'
+    });
+});
 
 // Helper function to escape markdown characters in text
 function escapeMarkdown(text: string): string {
@@ -108,6 +122,13 @@ bot.start(async (ctx) => {
         // Mark user as verified since they can now receive DMs
         verifiedUsers.add(userIdStr);
         
+        // Track user registration
+        analytics.trackUserRegistration(userIdStr, {
+            username: ctx.from!.username || '',
+            first_name: ctx.from!.first_name || '',
+            language_code: ctx.from!.language_code || ''
+        });
+        
         // Delete any pending registration message in groups
         if (registrationMessages.has(userIdStr)) {
             const msgInfo = registrationMessages.get(userIdStr)!;
@@ -186,10 +207,21 @@ I help you manage product waitlists in your Telegram groups! Create waitlists, l
 });
 
 // Ping test
-bot.command('ping', (ctx) => ctx.reply('🏓 pong'));
+bot.command('ping', (ctx) => {
+    analytics.trackCommand(ctx.from!.id.toString(), 'ping', {
+        chat_type: ctx.chat!.type,
+        username: ctx.from!.username || ''
+    });
+    ctx.reply('🏓 pong');
+});
 
 // /help command to show all available commands
 bot.command('help', (ctx) => {
+  analytics.trackCommand(ctx.from!.id.toString(), 'help', {
+    chat_type: ctx.chat!.type,
+    username: ctx.from!.username || ''
+  });
+
   const helpMessage = `🤖 **Elist Bot Commands**
 
 📌 **Basic Commands:**
@@ -227,39 +259,55 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
   }
 
   bot.command('openwaitlist', async (ctx) => {
-    const chatId = BigInt(ctx.chat!.id);
-    const args = ctx.message.text.split(' ').slice(1);
-  
-    if (!await isUserAdmin(ctx)) {
-      return ctx.reply('❌ Only admins can open waitlists.');
-    }
-  
-    const atIndex = args.findIndex((arg: string) => arg.startsWith('@'));
-    if (args.length < 2 || atIndex === -1) {
-      return ctx.reply('Usage: /openwaitlist <product name> @username');
-    }
-  
-    const productName = args.slice(0, atIndex).join(' ');
-    const targetUsername = args[atIndex].replace('@', '');
-  
-    const exists = await prisma.waitlist.findFirst({
-      where: { name: productName, chatId }
-    });
-  
-    if (exists) {
-      return ctx.reply(`❗️ Waitlist "${productName}" already exists.`);
-    }
-  
-    await prisma.waitlist.create({
-      data: {
-        name: productName,
-        chatId,
-        ownerUsername: targetUsername
-      }
-    });
-  
-    await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.\n\nUsers can subscribe with: /subscribe_${productName}`);
+  const chatId = BigInt(ctx.chat!.id);
+  const args = ctx.message.text.split(' ').slice(1);
+
+  // Track command usage
+  analytics.trackCommand(ctx.from!.id.toString(), 'openwaitlist', {
+    chat_type: ctx.chat!.type,
+    chat_id: ctx.chat!.id.toString(),
+    username: ctx.from!.username || ''
   });
+
+  if (!await isUserAdmin(ctx)) {
+    return ctx.reply('❌ Only admins can open waitlists.');
+  }
+
+  const atIndex = args.findIndex((arg: string) => arg.startsWith('@'));
+  if (args.length < 2 || atIndex === -1) {
+    return ctx.reply('Usage: /openwaitlist <product name> @username');
+  }
+
+  const productName = args.slice(0, atIndex).join(' ');
+  const targetUsername = args[atIndex].replace('@', '');
+
+  const exists = await prisma.waitlist.findFirst({
+    where: { name: productName, chatId }
+  });
+
+  if (exists) {
+    return ctx.reply(`❗️ Waitlist "${productName}" already exists.`);
+  }
+
+  await prisma.waitlist.create({
+    data: {
+      name: productName,
+      chatId,
+      ownerUsername: targetUsername
+    }
+  });
+
+  // Track waitlist creation
+  analytics.trackWaitlistEvent(ctx.from!.id.toString(), 'created', {
+    product_name: productName,
+    owner_username: targetUsername,
+    chat_type: ctx.chat!.type,
+    chat_id: ctx.chat!.id.toString(),
+    created_by: ctx.from!.username || ''
+  });
+
+  await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.\n\nUsers can subscribe with: /subscribe_${productName}`);
+});
 
 // /closewaitlist command to close a waitlist (owner or admin)
 bot.command('closewaitlist', async (ctx) => {
@@ -351,6 +399,15 @@ bot.command('subscribe', async (ctx) => {
         data: { waitlistId: waitlist.id, userId, username }
     });
     
+    // Track subscription
+    analytics.trackSubscription(userId.toString(), 'subscribe', {
+        product_name: productName,
+        owner_username: waitlist.ownerUsername,
+        chat_type: ctx.chat!.type,
+        chat_id: ctx.chat!.id.toString(),
+        username: username
+    });
+    
     try {
         await ctx.telegram.callApi('setMessageReaction', {
             chat_id: ctx.chat.id,
@@ -422,6 +479,16 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
         data: { waitlistId: waitlist.id, userId, username }
     });
     
+    // Track subscription (dynamic subscribe)
+    analytics.trackSubscription(userId.toString(), 'subscribe', {
+        product_name: waitlist.name,
+        owner_username: waitlist.ownerUsername,
+        chat_type: ctx.chat!.type,
+        chat_id: ctx.chat!.id.toString(),
+        username: username,
+        subscribe_type: 'dynamic_command'
+    });
+    
     try {
         await ctx.telegram.callApi('setMessageReaction', {
             chat_id: ctx.chat.id,
@@ -473,6 +540,16 @@ bot.command('unsubscribe', async (ctx) => {
         where: { waitlistId: waitlist.id, userId }
     });
     
+    // Track unsubscription
+    analytics.trackSubscription(userId.toString(), 'unsubscribe', {
+        product_name: productName,
+        owner_username: waitlist.ownerUsername,
+        chat_type: ctx.chat!.type,
+        chat_id: ctx.chat!.id.toString(),
+        username: ctx.from!.username || '',
+        unsubscribe_from: isPrivateChat ? 'dm' : 'group'
+    });
+    
     try {
         await ctx.telegram.callApi('setMessageReaction', {
             chat_id: ctx.chat.id,
@@ -522,17 +599,30 @@ bot.command('broadcast', async (ctx) => {
     // Add product and owner info to the broadcast message
     const fullBroadcastMessage = `${broadcastText}\n\nYou are receiving this message because you are on the waitlist for ${productName} by @${waitlist.ownerUsername}`;
   
-    let sentCount = 0;
-    for (const sub of subs) {
-      try {
-        await ctx.telegram.sendMessage(Number(sub.userId), fullBroadcastMessage);
-        sentCount++;
-      } catch (e) {
-        console.error(`Failed to send to ${sub.userId}:`, e);
-      }
-    }
+      let sentCount = 0;
+  const failedUsers: string[] = [];
   
-    await ctx.reply(`📢 Broadcast sent to ${sentCount} subscriber(s) of "${productName}".`);
+  for (const sub of subs) {
+    try {
+      await ctx.telegram.sendMessage(Number(sub.userId), fullBroadcastMessage);
+      sentCount++;
+    } catch (e) {
+      console.error(`Failed to send to ${sub.userId}:`, e);
+      failedUsers.push(sub.userId.toString());
+    }
+  }
+
+  // Track broadcast event
+  analytics.trackBroadcast(ctx.from!.id.toString(), {
+    product_name: productName,
+    subscribers_targeted: subs.length,
+    messages_sent: sentCount,
+    messages_failed: failedUsers.length,
+    owner_username: waitlist.ownerUsername,
+    message_length: broadcastText.length
+  });
+
+  await ctx.reply(`📢 Broadcast sent to ${sentCount} subscriber(s) of "${productName}".`);
   });
   
 
@@ -540,6 +630,13 @@ bot.command('broadcast', async (ctx) => {
 // /listwaitlists command to view all available waitlists in the current chat
 bot.command('listwaitlists', async (ctx) => {
   const chatId = BigInt(ctx.chat!.id);
+  
+  // Track command usage
+  analytics.trackCommand(ctx.from!.id.toString(), 'listwaitlists', {
+    chat_type: ctx.chat!.type,
+    chat_id: ctx.chat!.id.toString(),
+    username: ctx.from!.username || ''
+  });
   
   const waitlists = await prisma.waitlist.findMany({
     where: { chatId },
@@ -610,6 +707,14 @@ bot.command('list', async (ctx) => {
 bot.command('mywaitlists', async (ctx) => {
   const userId = BigInt(ctx.from!.id);
   const isPrivateChat = ctx.chat!.type === 'private';
+  
+  // Track command usage
+  analytics.trackCommand(ctx.from!.id.toString(), 'mywaitlists', {
+    chat_type: ctx.chat!.type,
+    chat_id: ctx.chat!.id.toString(),
+    username: ctx.from!.username || '',
+    context: isPrivateChat ? 'dm' : 'group'
+  });
   
   if (isPrivateChat) {
     // Option 2: Global view with chat information (when DMing the bot)

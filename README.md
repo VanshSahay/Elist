@@ -23,6 +23,7 @@ A powerful Telegram bot for managing multiple waitlists inside community groups,
 |---------------|------------------------|----------------------------------------------|
 | Telegram Bot  | [Telegraf](https://telegraf.js.org/) | Bot interface and command handling       |
 | ORM           | [Prisma](https://www.prisma.io/)     | Database schema and querying              |
+| Analytics     | [PostHog](https://posthog.com/)      | User behavior tracking and insights         |
 | Runtime       | [ts-node](https://typestrong.org/ts-node/) | Local dev via polling                     |
 | DB            | PostgreSQL             | Persistent waitlist + subscriber storage     |
 | Hosting       | [Vercel](https://vercel.com/)        | Production webhook hosting                  |
@@ -32,15 +33,18 @@ A powerful Telegram bot for managing multiple waitlists inside community groups,
 ## 📁 Folder Structure
 
 ```
-elist/
+ elist/
 ├── api/
 │   └── webhook.ts         # Vercel serverless function entry (webhook)
 ├── prisma/
 │   └── schema.prisma      # Prisma data model
 ├── src/
 │   ├── bot.ts             # Bot setup and command logic
-│   └── index.ts           # Local development entrypoint
-├── .env                   # Secrets (BOT\_TOKEN, DATABASE\_URL)
+│   ├── index.ts           # Local development entrypoint
+│   └── lib/
+│       ├── analytics.ts   # PostHog analytics integration
+│       └── prisma.ts      # Prisma client setup
+├── .env                   # Secrets (BOT_TOKEN, DATABASE_URL, POSTHOG_API_KEY)
 ├── tsconfig.json          # NodeNext TypeScript config
 ├── README.md              # This file
 └── package.json           # Scripts and dependencies
@@ -54,9 +58,39 @@ elist/
 `.env` file contents:
 
 ```env
+# Required
 BOT_TOKEN=your_telegram_bot_token
 DATABASE_URL=your_postgres_connection_string
+
+# Optional - Analytics (PostHog)
+POSTHOG_API_KEY=your_posthog_api_key
+POSTHOG_HOST=https://us.i.posthog.com
 ````
+
+### 📊 Analytics (PostHog) Setup
+
+The bot includes comprehensive analytics tracking via PostHog. To enable:
+
+1. **Sign up** for [PostHog](https://posthog.com/) (free tier available)
+2. **Create a project** and get your API key
+3. **Add to .env**: 
+   ```env
+   POSTHOG_API_KEY=phc_your_project_api_key
+   ```
+4. **Choose your host** (optional):
+   - US Cloud: `POSTHOG_HOST=https://us.i.posthog.com` (default)
+   - EU Cloud: `POSTHOG_HOST=https://eu.i.posthog.com`
+   - Self-hosted: `POSTHOG_HOST=https://your-instance.com`
+
+**📈 Tracked Events:**
+- **Commands**: All bot commands with user and chat context
+- **Registrations**: User DM registrations for notifications
+- **Subscriptions**: Subscribe/unsubscribe events with product details
+- **Broadcasts**: Message sends with delivery metrics
+- **Waitlists**: Creation and deletion events
+- **Errors**: Bot errors with context for debugging
+
+**🔒 Privacy**: Only user IDs, usernames, and usage metrics are tracked. No message content is logged.
 
 ---
 
