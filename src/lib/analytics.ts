@@ -15,54 +15,100 @@ export class Analytics {
         if (apiKey) {
             this.posthog = new PostHog(apiKey, {
                 host: host,
-                flushAt: 1, // Send events immediately in production
-                flushInterval: 1000, // Send events every 1 second
+                flushAt: 1, // Send events immediately (important for serverless)
+                flushInterval: 100, // Flush quickly in serverless environments
+                disableGeoip: false
             });
             this.isEnabled = true;
-            console.log('📊 PostHog analytics initialized');
+            console.log('📊 PostHog analytics initialized for', process.env.VERCEL ? 'Vercel serverless' : 'local development');
+            
+            // Test event to verify connection works
+            this.posthog.capture({
+                distinctId: 'system',
+                event: 'analytics_initialized',
+                properties: {
+                    environment: process.env.VERCEL ? 'vercel' : 'local',
+                    timestamp: new Date().toISOString()
+                }
+            });
         } else {
             console.log('⚠️ PostHog API key not found. Analytics disabled.');
+            console.log('Environment check:', {
+                hasApiKey: !!apiKey,
+                isVercel: !!process.env.VERCEL,
+                nodeEnv: process.env.NODE_ENV
+            });
+        }
+    }
+
+    // Force flush events (important for serverless)
+    async flush() {
+        if (this.posthog) {
+            try {
+                await this.posthog.flush();
+            } catch (e) {
+                console.error('Failed to flush PostHog events:', e);
+            }
         }
     }
 
     // Track user commands
     trackCommand(userId: string, command: string, properties: Record<string, any> = {}) {
-        if (!this.isEnabled || !this.posthog) return;
+        if (!this.isEnabled || !this.posthog) {
+            console.log('Analytics disabled, skipping trackCommand:', command);
+            return;
+        }
 
+        console.log('📊 Tracking command:', command, 'for user:', userId);
         this.posthog.capture({
             distinctId: userId,
             event: 'bot_command',
             properties: {
                 command,
                 timestamp: new Date().toISOString(),
+                environment: process.env.VERCEL ? 'vercel' : 'local',
                 ...properties
             }
         });
+
+        // Immediate flush for serverless environments
+        if (process.env.VERCEL) {
+            this.flush().catch(e => console.error('Flush error:', e));
+        }
     }
 
     // Track waitlist operations
     trackWaitlistEvent(userId: string, event: string, properties: Record<string, any> = {}) {
         if (!this.isEnabled || !this.posthog) return;
 
+        console.log('📊 Tracking waitlist event:', event, 'for user:', userId);
         this.posthog.capture({
             distinctId: userId,
             event: `waitlist_${event}`,
             properties: {
                 timestamp: new Date().toISOString(),
+                environment: process.env.VERCEL ? 'vercel' : 'local',
                 ...properties
             }
         });
+
+        // Immediate flush for serverless environments
+        if (process.env.VERCEL) {
+            this.flush().catch(e => console.error('Flush error:', e));
+        }
     }
 
     // Track user registration
     trackUserRegistration(userId: string, properties: Record<string, any> = {}) {
         if (!this.isEnabled || !this.posthog) return;
 
+        console.log('📊 Tracking user registration for user:', userId);
         this.posthog.capture({
             distinctId: userId,
             event: 'user_registered',
             properties: {
                 timestamp: new Date().toISOString(),
+                environment: process.env.VERCEL ? 'vercel' : 'local',
                 ...properties
             }
         });
@@ -72,9 +118,15 @@ export class Analytics {
             distinctId: userId,
             properties: {
                 first_seen: new Date().toISOString(),
+                environment: process.env.VERCEL ? 'vercel' : 'local',
                 ...properties
             }
         });
+
+        // Immediate flush for serverless environments
+        if (process.env.VERCEL) {
+            this.flush().catch(e => console.error('Flush error:', e));
+        }
     }
 
     // Track subscription events
