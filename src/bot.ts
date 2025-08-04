@@ -28,6 +28,28 @@ function escapeMarkdown(text: string): string {
     return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
 }
 
+// Helper function to send a message that auto-deletes after specified time
+async function sendTemporaryMessage(ctx: any, text: string, options: any = {}, deleteAfterMs: number = 10000) {
+    try {
+        const message = await ctx.reply(text, options);
+        
+        // Auto-delete the message after specified time
+        setTimeout(async () => {
+            try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, message.message_id);
+            } catch (e) {
+                // Message might already be deleted or chat inaccessible
+                console.log(`Could not delete temporary message: ${e}`);
+            }
+        }, deleteAfterMs);
+        
+        return message;
+    } catch (e) {
+        console.error('Failed to send temporary message:', e);
+        throw e;
+    }
+}
+
 // Store temporary registration messages to delete them later
 const registrationMessages = new Map<string, {messageId: number, chatId: number}>(); // userId -> {messageId, chatId}
 
@@ -67,7 +89,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
         if (e.description && e.description.includes("can't initiate conversation")) {
             try {
                 const registrationPrompt = await ctx.reply(
-                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or type /start in a private chat with me.\n\n You only need to do this once!.`,
+                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or type /start in a private chat with me.\n\nYou only need to do this once!`,
                     {
                         reply_markup: {
                             inline_keyboard: [[
@@ -83,7 +105,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
                     chatId: chatId
                 });
                 
-                // Auto-delete the message after 1 minute if they haven't registered yet
+                // Auto-delete the message after 10 seconds if they haven't registered yet
                 setTimeout(async () => {
                     try {
                         // Only delete if the message still exists (user hasn't registered via /start)
@@ -99,7 +121,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
                         registrationMessages.delete(userIdStr);
                         pendingSubscriptions.delete(userIdStr);
                     }
-                },  10 * 1000); // 10 seconds
+                }, 10 * 1000); // 10 seconds
                 
                 return false;
             } catch (e) {
@@ -270,7 +292,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
   });
 
   if (!await isUserAdmin(ctx)) {
-    return ctx.reply('❌ Only admins can open waitlists.');
+    return sendTemporaryMessage(ctx, '❌ Only admins can open waitlists.');
   }
 
   const atIndex = args.findIndex((arg: string) => arg.startsWith('@'));
@@ -286,7 +308,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
   });
 
   if (exists) {
-    return ctx.reply(`❗️ Waitlist "${productName}" already exists.`);
+    return sendTemporaryMessage(ctx, `❗️ Waitlist "${productName}" already exists.`);
   }
 
   await prisma.waitlist.create({
@@ -316,7 +338,7 @@ bot.command('closewaitlist', async (ctx) => {
   const args = ctx.message.text.split(' ').slice(1);
 
   if (!fromUsername) {
-    return ctx.reply('❌ You need a username to use this command.');
+    return sendTemporaryMessage(ctx, '❌ You need a username to use this command.');
   }
 
   if (args.length === 0) {
@@ -369,7 +391,7 @@ bot.command('subscribe', async (ctx) => {
     // Find the waitlist in this chat
     const waitlist = await prisma.waitlist.findFirst({ where: { name: productName, chatId } });
     if (!waitlist) {
-        return ctx.reply(`❗️ No waitlist named "${productName}" found.`);
+        return sendTemporaryMessage(ctx, `❗️ No waitlist named "${productName}" found.`);
     }
     
     // Check if already subscribed
@@ -454,7 +476,7 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     }
     
     if (!waitlist) {
-        return ctx.reply(`❗️ No waitlist found for command "/subscribe_${commandName}".`);
+        return sendTemporaryMessage(ctx, `❗️ No waitlist found for command "/subscribe_${commandName}".`);
     }
     
     // Check if already subscribed
