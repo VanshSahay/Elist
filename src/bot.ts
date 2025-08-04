@@ -67,7 +67,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
         if (e.description && e.description.includes("can't initiate conversation")) {
             try {
                 const registrationPrompt = await ctx.reply(
-                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 10 seconds\n\nYou only need to do this once!.`,
+                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or type /start in a private chat with me.\n\n You only need to do this once!.`,
                     {
                         reply_markup: {
                             inline_keyboard: [[
@@ -425,7 +425,14 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     const match = ctx.message.text.match(/^\/subscribe_(.+)/);
     if (!match) return;
     
-    const commandName = match[1];
+    let commandName = match[1];
+    
+    // Strip bot mention if present (e.g., "Shiroglass@elitelist_bot" becomes "Shiroglass")
+    const botMentionMatch = commandName.match(/^(.+?)@[a-zA-Z0-9_]+$/);
+    if (botMentionMatch) {
+        commandName = botMentionMatch[1];
+    }
+    
     const chatId = BigInt(ctx.chat!.id);
     const userId = BigInt(ctx.from!.id);
     const username = ctx.from!.username || '';
