@@ -626,7 +626,7 @@ bot.command('broadcast', async (ctx) => {
     const subs = await prisma.subscriber.findMany({ where: { waitlistId: waitlist.id } });
   
     // Add product and owner info to the broadcast message
-    const fullBroadcastMessage = `${broadcastText}\n\nYou are receiving this message because you are on the waitlist for ${productName} by @${waitlist.ownerUsername}`;
+    const fullBroadcastMessage = `📢 **${waitlist.ownerUsername} sent this message**\n\n${broadcastText}\n\nYou are receiving this message because you are on the waitlist for ${productName}`;
   
       let sentCount = 0;
   const failedUsers: string[] = [];
