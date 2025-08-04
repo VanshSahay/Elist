@@ -67,7 +67,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
         if (e.description && e.description.includes("can't initiate conversation")) {
             try {
                 const registrationPrompt = await ctx.reply(
-                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 1 minute.`,
+                    `👋 @${username}, to receive notifications for "${productName}" waitlist by @${ownerUsername}, please DM me once by clicking the button below or typing /start in a private chat with me.\n\n⏰ This message will disappear in 10 seconds\n\nYou only need to do this once!.`,
                     {
                         reply_markup: {
                             inline_keyboard: [[
@@ -99,7 +99,7 @@ async function checkUserRegistration(ctx: any, productName: string, ownerUsernam
                         registrationMessages.delete(userIdStr);
                         pendingSubscriptions.delete(userIdStr);
                     }
-                }, 1 * 60 * 1000); // 1 minute
+                },  10 * 1000); // 10 seconds
                 
                 return false;
             } catch (e) {
