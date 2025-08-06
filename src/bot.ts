@@ -29,19 +29,23 @@ function escapeMarkdown(text: string): string {
 }
 
 // Helper function to send a message that auto-deletes after specified time
-async function sendTemporaryMessage(ctx: any, text: string, options: any = {}, deleteAfterMs: number = 10000) {
+// Always deletes error messages, and deletes bot messages in groups but not in private chats
+async function sendTemporaryMessage(ctx: any, text: string, options: any = {}, deleteAfterMs: number = 10000, forceDelete: boolean = false) {
     try {
         const message = await ctx.reply(text, options);
+        const isPrivateChat = ctx.chat?.type === 'private';
         
-        // Auto-delete the message after specified time
-        setTimeout(async () => {
-            try {
-                await ctx.telegram.deleteMessage(ctx.chat.id, message.message_id);
-            } catch (e) {
-                // Message might already be deleted or chat inaccessible
-                console.log(`Could not delete temporary message: ${e}`);
-            }
-        }, deleteAfterMs);
+        // Auto-delete if it's an error (forceDelete = true), or if it's a group chat
+        if (forceDelete || !isPrivateChat) {
+            setTimeout(async () => {
+                try {
+                    await ctx.telegram.deleteMessage(ctx.chat.id, message.message_id);
+                } catch (e) {
+                    // Message might already be deleted or chat inaccessible
+                    console.log(`Could not delete temporary message: ${e}`);
+                }
+            }, deleteAfterMs);
+        }
         
         return message;
     } catch (e) {
@@ -221,10 +225,10 @@ I help you manage product waitlists in your Telegram groups! Create waitlists, l
 
 💡 **Tip:** You can also DM me directly for private commands like viewing your waitlists.`;
 
-        ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
+        sendTemporaryMessage(ctx, welcomeMessage, { parse_mode: 'Markdown' });
     } else {
         // In group chats, just acknowledge the command without doing registration
-        ctx.reply('👋 Hi! To use my features, please add me to your group and use `/help` to see available commands.', { parse_mode: 'Markdown' });
+        sendTemporaryMessage(ctx, '👋 Hi! To use my features, please add me to your group and use `/help` to see available commands.', { parse_mode: 'Markdown' });
     }
 });
 
@@ -234,7 +238,7 @@ bot.command('ping', (ctx) => {
         chat_type: ctx.chat!.type,
         username: ctx.from!.username || ''
     });
-    ctx.reply('🏓 pong');
+    sendTemporaryMessage(ctx, '🏓 pong');
 });
 
 // /help command to show all available commands
@@ -272,7 +276,7 @@ bot.command('help', (ctx) => {
 - Use \`/mywaitlists\` in DM to see all your subscriptions across all groups
 - New users will be prompted to register with me before joining waitlists`;
 
-  ctx.reply(helpMessage, { parse_mode: 'Markdown' });
+  sendTemporaryMessage(ctx, helpMessage, { parse_mode: 'Markdown' });
 });
 
 async function isUserAdmin(ctx: any): Promise<boolean> {
@@ -297,7 +301,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
 
   const atIndex = args.findIndex((arg: string) => arg.startsWith('@'));
   if (args.length < 2 || atIndex === -1) {
-    return ctx.reply('Usage: /openwaitlist <product name> @username');
+    return sendTemporaryMessage(ctx, '❌ Usage: /openwaitlist <product name> @username', {}, 10000, true);
   }
 
   const productName = args.slice(0, atIndex).join(' ');
@@ -328,7 +332,7 @@ async function isUserAdmin(ctx: any): Promise<boolean> {
     created_by: ctx.from!.username || ''
   });
 
-  await ctx.reply(`✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.\n\nUsers can subscribe with: /subscribe_${productName}`);
+  await sendTemporaryMessage(ctx, `✅ Waitlist "${productName}" opened for @${targetUsername}. They can now /broadcast to it.\n\nUsers can subscribe with: /subscribe_${productName}`);
 });
 
 // /closewaitlist command to close a waitlist (owner or admin)
@@ -342,7 +346,7 @@ bot.command('closewaitlist', async (ctx) => {
   }
 
   if (args.length === 0) {
-    return ctx.reply('Usage: /closewaitlist <product name>');
+    return sendTemporaryMessage(ctx, '❌ Usage: /closewaitlist <product name>', {}, 10000, true);
   }
 
   const productName = args.join(' ');
@@ -353,7 +357,7 @@ bot.command('closewaitlist', async (ctx) => {
   });
 
   if (!waitlist) {
-    return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+    return sendTemporaryMessage(ctx, `❗️ No waitlist named "${productName}" found in this chat.`, {}, 10000, true);
   }
 
   // Check if user is the owner or an admin
@@ -361,7 +365,7 @@ bot.command('closewaitlist', async (ctx) => {
   const isAdmin = await isUserAdmin(ctx);
   
   if (!isOwner && !isAdmin) {
-    return ctx.reply(`❌ Only @${waitlist.ownerUsername} or group admins can close this waitlist.`);
+    return sendTemporaryMessage(ctx, `❌ Only @${waitlist.ownerUsername} or group admins can close this waitlist.`, {}, 10000, true);
   }
 
   // Delete all subscribers first (due to foreign key constraints)
@@ -374,7 +378,7 @@ bot.command('closewaitlist', async (ctx) => {
     where: { id: waitlist.id }
   });
 
-  await ctx.reply(`🗑️ Waitlist "${productName}" has been closed and deleted.`);
+  await sendTemporaryMessage(ctx, `🗑️ Waitlist "${productName}" has been closed and deleted.`);
 });
 
 bot.command('subscribe', async (ctx) => {
@@ -384,7 +388,7 @@ bot.command('subscribe', async (ctx) => {
     const isPrivateChat = ctx.chat!.type === 'private';
     const args = ctx.message.text.split(' ').slice(1);
     if (args.length === 0) {
-        return ctx.reply('Usage: /subscribe <productName>');
+        return sendTemporaryMessage(ctx, '❌ Usage: /subscribe <productName>', {}, 10000, true);
     }
     const productName = args.join(' ');
     
@@ -399,7 +403,7 @@ bot.command('subscribe', async (ctx) => {
         where: { waitlistId: waitlist.id, userId }
     });
     if (existing) {
-        return ctx.reply(`You are already on the "${productName}" waitlist.`);
+        return sendTemporaryMessage(ctx, `❗️ You are already on the "${productName}" waitlist.`, {}, 10000, true);
     }
     
     // For group chats, check if user can receive DMs before subscribing
@@ -438,7 +442,7 @@ bot.command('subscribe', async (ctx) => {
         });
     } catch (e) {
         // Fallback to text message if reaction fails
-        await ctx.reply(`You have been subscribed to "${productName}"!`);
+        await sendTemporaryMessage(ctx, `You have been subscribed to "${productName}"!`);
     }
 });
 
@@ -485,7 +489,7 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
     });
     
     if (existing) {
-        return ctx.reply(`You are already on the "${waitlist.name}" waitlist.`);
+        return sendTemporaryMessage(ctx, `❗️ You are already on the "${waitlist.name}" waitlist.`, {}, 10000, true);
     }
     
     // For group chats, check if user can receive DMs before subscribing
@@ -526,7 +530,7 @@ bot.hears(/^\/subscribe_(.+)/, async (ctx) => {
         });
     } catch (e) {
         // Fallback to text message if reaction fails
-        await ctx.reply(`You have been subscribed to "${waitlist.name}"!`);
+        await sendTemporaryMessage(ctx, `You have been subscribed to "${waitlist.name}"!`);
     }
 });
 
@@ -536,7 +540,7 @@ bot.command('unsubscribe', async (ctx) => {
     const isPrivateChat = ctx.chat!.type === 'private';
     const args = ctx.message.text.split(' ').slice(1);
     if (args.length === 0) {
-        return ctx.reply('Usage: /unsubscribe <productName>');
+        return sendTemporaryMessage(ctx, '❌ Usage: /unsubscribe <productName>', {}, 10000, true);
     }
     const productName = args.join(' ');
     
@@ -552,7 +556,7 @@ bot.command('unsubscribe', async (ctx) => {
         });
         
         if (!subscription) {
-            return ctx.reply(`❗️ You are not subscribed to any waitlist named "${productName}".`);
+            return sendTemporaryMessage(ctx, `❗️ You are not subscribed to any waitlist named "${productName}".`, {}, 10000, true);
         }
         
         waitlist = subscription.waitlist;
@@ -560,7 +564,7 @@ bot.command('unsubscribe', async (ctx) => {
         // In group chat, search only in current chat
         waitlist = await prisma.waitlist.findFirst({ where: { name: productName, chatId } });
         if (!waitlist) {
-            return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+            return sendTemporaryMessage(ctx, `❗️ No waitlist named "${productName}" found in this chat.`, {}, 10000, true);
         }
     }
     
@@ -586,7 +590,7 @@ bot.command('unsubscribe', async (ctx) => {
             reaction: [{ type: 'emoji', emoji: '👍' }],
         });
     } catch (e) {
-        await ctx.reply(`You have been removed from the "${escapeMarkdown(productName)}" waitlist.`, { parse_mode: 'Markdown' });
+        await sendTemporaryMessage(ctx, `You have been removed from the "${escapeMarkdown(productName)}" waitlist.`, { parse_mode: 'Markdown' });
     }
 });
 
@@ -597,11 +601,11 @@ bot.command('broadcast', async (ctx) => {
   
     // Only allow broadcasting via DM
     if (!isPrivateChat) {
-      return ctx.reply('📢 Please DM me directly to send broadcasts. This keeps group chats clean!');
+      return sendTemporaryMessage(ctx, '📢 Please DM me directly to send broadcasts. This keeps group chats clean!', {}, 10000, true);
     }
   
     if (args.length < 2) {
-      return ctx.reply('Usage: /broadcast <productName> <message...>');
+      return sendTemporaryMessage(ctx, '❌ Usage: /broadcast <productName> <message...>', {}, 10000, true);
     }
   
     const productName = args[0];
@@ -616,11 +620,11 @@ bot.command('broadcast', async (ctx) => {
     });
   
     if (!waitlist) {
-      return ctx.reply(`❗️ No waitlist named "${productName}" found that you own.`);
+      return sendTemporaryMessage(ctx, `❗️ No waitlist named "${productName}" found that you own.`, {}, 10000, true);
     }
   
     if (!fromUsername || waitlist.ownerUsername !== fromUsername) {
-      return ctx.reply(`❌ Only @${waitlist.ownerUsername} can broadcast to this waitlist.`);
+      return sendTemporaryMessage(ctx, `❌ Only @${waitlist.ownerUsername} can broadcast to this waitlist.`, {}, 10000, true);
     }
   
     const subs = await prisma.subscriber.findMany({ where: { waitlistId: waitlist.id } });
@@ -651,7 +655,7 @@ bot.command('broadcast', async (ctx) => {
     message_length: broadcastText.length
   });
 
-  await ctx.reply(`📢 Broadcast sent to ${sentCount} subscriber(s) of "${productName}".`);
+  await sendTemporaryMessage(ctx, `📢 Broadcast sent to ${sentCount} subscriber(s) of "${productName}".`);
   });
   
 
@@ -677,7 +681,7 @@ bot.command('listwaitlists', async (ctx) => {
   });
 
   if (waitlists.length === 0) {
-    return ctx.reply('📋 No waitlists available in this chat.');
+    return sendTemporaryMessage(ctx, '📋 No waitlists available in this chat.');
   }
 
   let message = '📋 **Available Waitlists:**\n\n';
@@ -687,7 +691,7 @@ bot.command('listwaitlists', async (ctx) => {
     message += `  Subscribers: ${waitlist._count.subscribers}\n\n`;
   }
 
-  await ctx.reply(message, { parse_mode: 'Markdown' });
+  await sendTemporaryMessage(ctx, message, { parse_mode: 'Markdown' });
 });
 
 // /list command to view subscribers of a specific waitlist
@@ -696,7 +700,7 @@ bot.command('list', async (ctx) => {
   const args = ctx.message.text.split(' ').slice(1);
   
   if (args.length === 0) {
-    return ctx.reply('Usage: /list <product name>\n\nTo see all waitlists, use /listwaitlists');
+    return sendTemporaryMessage(ctx, '❌ Usage: /list <product name>\n\nTo see all waitlists, use /listwaitlists', {}, 10000, true);
   }
 
   const productName = args.join(' ');
@@ -710,11 +714,11 @@ bot.command('list', async (ctx) => {
   });
 
   if (!waitlist) {
-    return ctx.reply(`❗️ No waitlist named "${productName}" found in this chat.`);
+    return sendTemporaryMessage(ctx, `❗️ No waitlist named "${productName}" found in this chat.`, {}, 10000, true);
   }
 
   if (waitlist.subscribers.length === 0) {
-    return ctx.reply(`📋 **${escapeMarkdown(productName)}** waitlist\n\nOwner: @${escapeMarkdown(waitlist.ownerUsername)}\nSubscribers: None yet`, { parse_mode: 'Markdown' });
+    return sendTemporaryMessage(ctx, `📋 **${escapeMarkdown(productName)}** waitlist\n\nOwner: @${escapeMarkdown(waitlist.ownerUsername)}\nSubscribers: None yet`, { parse_mode: 'Markdown' });
   }
 
   let message = `📋 **${escapeMarkdown(productName)}** waitlist\n\n`;
@@ -729,7 +733,7 @@ bot.command('list', async (ctx) => {
     }
   }
 
-  await ctx.reply(message, { parse_mode: 'Markdown' });
+  await sendTemporaryMessage(ctx, message, { parse_mode: 'Markdown' });
 });
 
 // /mywaitlists command to view user's joined waitlists
@@ -755,7 +759,7 @@ bot.command('mywaitlists', async (ctx) => {
     });
 
     if (subscriptions.length === 0) {
-      return ctx.reply('📝 You are not subscribed to any waitlists.');
+      return sendTemporaryMessage(ctx, '📝 You are not subscribed to any waitlists.');
     }
 
     let message = '📝 **All Your Waitlists:**\n\n';
@@ -780,7 +784,7 @@ bot.command('mywaitlists', async (ctx) => {
       message += `  Group: ${chatName}\n\n`;
     }
 
-    await ctx.reply(message, { parse_mode: 'Markdown' });
+    await sendTemporaryMessage(ctx, message, { parse_mode: 'Markdown' });
     
   } else {
     // Option 1: Chat-specific (when used in a group)
@@ -799,7 +803,7 @@ bot.command('mywaitlists', async (ctx) => {
     });
 
     if (subscriptions.length === 0) {
-      return ctx.reply('📝 You are not subscribed to any waitlists in this chat.');
+      return sendTemporaryMessage(ctx, '📝 You are not subscribed to any waitlists in this chat.');
     }
 
     let message = '📝 **Your Waitlists in This Chat:**\n\n';
@@ -808,7 +812,7 @@ bot.command('mywaitlists', async (ctx) => {
       message += `  Owner: @${escapeMarkdown(sub.waitlist.ownerUsername)}\n\n`;
     }
 
-    await ctx.reply(message, { parse_mode: 'Markdown' });
+    await sendTemporaryMessage(ctx, message, { parse_mode: 'Markdown' });
   }
 });
 
